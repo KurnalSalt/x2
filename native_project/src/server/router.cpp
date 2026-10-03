@@ -2856,14 +2856,20 @@ std::vector<std::uint8_t> Router::marsnet_locked(const marsnet::Frame& frame) {
 
     if (tables_ && frame.proto_id == static_cast<std::uint32_t>(ProtoId::C2L_GameTask)) {
         std::int32_t type = 0;
+        std::int32_t chapter = 0;
         proto::Reader reader{frame.body};
         while (!reader.eof()) {
             const auto field = reader.field();
             if (!field) break;
             if (field->number == 1 && field->wire_type == 0) type = static_cast<std::int32_t>(reader.varint().value_or(0));
+            else if (field->number == 3 && field->wire_type == 0) chapter = static_cast<std::int32_t>(reader.varint().value_or(0));
             else if (!reader.skip(field->wire_type)) break;
         }
 
+        if(type==7) {
+            const auto body=offline::chapter_task_reply(account_,*tables_,chapter,developer_mode_);
+            return marsnet::encode_response(354,frame.head.request_id,frame.head.session_id,data_version_,10,"",body);
+        }
         if(type==5 || type==6) {
             const auto body=offline::favor_task_reply(account_,tables_.get(),type,std::time(nullptr));accounts_.save(account_key_,account_);
             return marsnet::encode_response(354,frame.head.request_id,frame.head.session_id,data_version_,10,"",body);

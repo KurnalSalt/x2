@@ -33,6 +33,8 @@ public final class GMWindow implements Application.ActivityLifecycleCallbacks {
     private TextView pageStatus;
     private Runnable catalogReload;
     private int catalogRequest=0;
+    private boolean rendererRefreshed;
+    private int rendererPolls;
     private TextView selection;
     private EditText amount, search;
     private LinearLayout rows;
@@ -118,8 +120,63 @@ public final class GMWindow implements Application.ActivityLifecycleCallbacks {
                 });
                 manager.addView(bubble,position);
                 android.util.Log.i("X2GM", "native bubble attached to " + next.getClass().getName());
+                if ("G8441".equals(Build.MODEL) && Build.VERSION.SDK_INT >= 34 && !rendererRefreshed) {
+                    main.postDelayed(() -> waitForRenderer(next), 3000);
+                }
             } catch (Exception error) { bubble=null; android.util.Log.e("X2GM","attach",error); }
         });
+    }
+    private View findUnityView(View view) {
+        if ("com.unity3d.player.UnityPlayer".equals(view.getClass().getName())) return view;
+        if (view instanceof ViewGroup) {
+            ViewGroup group=(ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++) {
+                View found=findUnityView(group.getChildAt(i)); if(found!=null) return found;
+            }
+        }
+        return null;
+    }
+    private SurfaceView findSurface(View view) {
+        if(view instanceof SurfaceView) return (SurfaceView)view;
+        if(view instanceof ViewGroup) {
+            ViewGroup group=(ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++) {
+                SurfaceView found=findSurface(group.getChildAt(i)); if(found!=null) return found;
+            }
+        }
+        return null;
+    }
+    private void waitForRenderer(Activity owner) {
+        if(rendererRefreshed || activity!=owner || owner.isFinishing() || rendererPolls++>=120) return;
+        request("status",null,value -> {
+            if(value.optBoolean("connected")) main.postDelayed(() -> refreshRendererOnce(owner),20000);
+            else main.postDelayed(() -> waitForRenderer(owner),3000);
+        });
+    }
+    private void refreshRendererOnce(Activity owner) {
+        if(rendererRefreshed || activity!=owner || owner.isFinishing() || !owner.hasWindowFocus()) return;
+        View player=findUnityView(owner.getWindow().getDecorView());
+        SurfaceView surface=player==null?null:findSurface(player);
+        if(surface==null) return;
+        // A real background/foreground cycle repairs observed startup corruption.
+        // Try a scoped surface refresh; cold-start recovery is not yet verified.
+        try {
+            player.getClass().getMethod("windowFocusChanged",boolean.class).invoke(player,false);
+            player.getClass().getMethod("pause").invoke(player);
+            rendererRefreshed=true;
+            int visibility=surface.getVisibility();
+            surface.setVisibility(View.INVISIBLE);
+            main.postDelayed(() -> {
+                surface.setVisibility(visibility);
+                try {
+                    if(activity==owner && !owner.isFinishing() && owner.hasWindowFocus()) {
+                        player.getClass().getMethod("resume").invoke(player);
+                        player.getClass().getMethod("windowFocusChanged",boolean.class).invoke(player,true);
+                        android.util.Log.i("X2GM","XZ1C renderer surface refreshed");
+                    }
+                } catch(Exception error) {android.util.Log.e("X2GM","renderer resume",error);}
+            },250);
+        } catch(Exception error) {android.util.Log.e("X2GM","renderer refresh",error);}
     }
     private void detach() {
         if (dialog != null) { dialog.dismiss(); dialog=null; }

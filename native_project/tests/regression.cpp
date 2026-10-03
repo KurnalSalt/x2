@@ -588,5 +588,20 @@ int main(int argc, char** argv) {
         assert(repository.find("__x2_gm_backup__save-import-check")->player.gold==99);
         checks+=11;
     }
+    {
+        auto a=fixture();
+        auto empty=offline::chapter_task_reply(a,*tables,2010200,false);
+        assert(varint_field(empty,1)==10 && varint_field(empty,2)==7 && varint_field(empty,5)==2010200);
+        assert(varint_field(empty,7)==100);
+        assert(varint_field(empty,6)==0);
+        auto developer=offline::chapter_task_reply(a,*tables,2010200,true);
+        assert(varint_field(developer,6)==100);
+        a.player.cleared_main={2110101,2110102,2110103,2110104,2110105,2110106};
+        assert(varint_field(offline::chapter_task_reply(a,*tables,2010200,false),6)==0);
+        a.player.cleared_main={2110151,2110152,2110153,2110154};
+        assert(varint_field(offline::chapter_task_reply(a,*tables,2010200,false),6)==8);
+        assert(varint_field(offline::chapter_task_reply(a,*tables,999,false),1)==13);
+        checks+=8;
+    }
     printf("PASS: %d regression checks against embedded APK tables (including SQLite reload and GM isolation)\n", checks);
 }

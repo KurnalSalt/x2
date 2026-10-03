@@ -88,6 +88,8 @@ struct TaskProgress {
 
 [[nodiscard]] TaskProgress task_progress(const Account& account, const TableBlob& tables, std::int32_t condition_id);
 [[nodiscard]] std::vector<std::uint8_t> challenge_task_reply(const Account& account, const TableBlob& tables);
+[[nodiscard]] std::vector<std::uint8_t> chapter_task_reply(const Account& account, const TableBlob& tables,
+                                                         std::int32_t chapter, bool developer);
 struct StarSkillUp {
     bool ok{};
 };
@@ -299,7 +301,7 @@ struct FavorBreakResult {
 // 白夜行星
 inline constexpr std::int32_t kCollegeOk = 10;
 inline constexpr std::int32_t kCollegeNoItem = 22;
-inline constexpr std::int32_t kCollegeLimitGold = 35;
+inline constexpr std::int32_t kCollegeLimitGold = 35; 
 inline constexpr std::int32_t kCollegeBusy = 55;
 inline constexpr std::int32_t kCollegeMaxLevel = 14;
 

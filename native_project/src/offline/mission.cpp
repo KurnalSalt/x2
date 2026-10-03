@@ -828,6 +828,49 @@ std::vector<std::uint8_t> challenge_task_reply(const Account& account, const Tab
     return reply.data();
 }
 
+std::vector<std::uint8_t> chapter_task_reply(const Account& account, const TableBlob& tables,
+                                           std::int32_t chapter, bool developer) {
+    Writer reply;
+    GameTable chapters, tasks, single, lines;
+    const bool valid=chapters.load(tables,"ChapterInfo") && chapters.row(chapter).has_value();
+    reply.int32(1,valid?10:13); reply.int32(2,7); reply.int32(5,chapter);
+    if(!valid || !tasks.load(tables,"TaskChapter") || !single.load(tables,"TaskCondition") ||
+       !lines.load(tables,"TaskConditionLine")) return reply.data();
+    int points=0, capacity=0;
+    for(const auto& row:tasks.rows()) {
+        if(tasks.int_field(row,8).value_or(0)!=chapter || tasks.int_field(row,9).value_or(0)!=1) continue;
+        const auto id=static_cast<int>(row.key);
+        auto& conditions=tasks.int_field(row,4).value_or(0)==1?lines:single;
+        const auto condition=conditions.row(tasks.int_field(row,3).value_or(0));
+        if(!condition) continue;
+        const auto kind=conditions.int_field(*condition,2).value_or(0);
+        const auto subjects=conditions.ints_field(*condition,3);
+        const auto targets=conditions.ints_field(*condition,5);
+        const auto awards=tasks.ints_field(row,10);
+        int current=0,completed=0;
+        if(kind==34) {
+            current=std::ranges::any_of(subjects,[&](int section){return std::ranges::contains(account.player.cleared_main,section);})?1:0;
+        } else if(kind==35) {
+            for(int subject:subjects) {
+                for(const auto& item:account.items) if(item.id==subject) current=clamp_add(current,std::max(0,item.num));
+                if(std::ranges::contains(account.player.relic_pack,subject)) current=std::max(current,1);
+            }
+        }
+        for(std::size_t i=0;i<targets.size() && i<awards.size();i++) {
+            capacity=clamp_add(capacity,std::max(0,awards[i]));
+            if(targets[i]>0 && current>=targets[i]) {++completed;points=clamp_add(points,std::max(0,awards[i]));}
+        }
+        Writer task; task.int32(1,id); task.int32(2,completed==static_cast<int>(targets.size())?3:2);
+        task.int32(3,targets.empty()?0:std::min(current,targets.back())); task.int32(5,completed);
+        task.int32(6,targets.empty()?0:std::min(completed,static_cast<int>(targets.size())-1));
+        reply.message(3,task.data());
+    }
+    // The developer profile deliberately skips early story chapters for testing.
+    // Its DP gate bypass is scoped to that profile, never a normal save's progress.
+    reply.int32(6,developer?capacity:points); reply.int32(7,capacity);
+    return reply.data();
+}
+
 namespace {
 
 std::int32_t equip_slot(const TableBlob* tables, std::int32_t type_id) {
@@ -1750,7 +1793,7 @@ TaskClaim use_item(Account& account, const TableBlob* tables, std::int32_t item_
     if (!item.load(*tables, "Item") || !gift.load(*tables, "Gift")) return {};
     const auto row = item.row(static_cast<std::uint64_t>(item_id));
     if (!row) return {};
-    const auto groups = item.ints_field(*row, 16);
+    const auto groups = item.ints_field(*row, 16); 
     const auto owned = std::ranges::find(account.items, item_id, &AccountItem::id);
     if (groups.empty() || owned == account.items.end() || owned->num < count) return {};
     std::ranges::sort(picks);
@@ -1773,7 +1816,7 @@ TaskClaim use_item(Account& account, const TableBlob* tables, std::int32_t item_
     }
     std::vector<AccountItem> merged;
     for (const auto& reward : rewards) {
-        if (reward.num <= 0) continue;
+        if (reward.num <= 0) continue; 
         const auto it = std::ranges::find(merged, reward.id, &AccountItem::id);
         if (it == merged.end()) merged.push_back(reward);
         else it->num = clamp_add(it->num, reward.num);
@@ -2117,7 +2160,7 @@ AddFavorResult apply_add_favor(Account& account, const TableBlob* tables, const 
         ++account.player.stat_talk_given; // 成就: 累计与神格交谈 (620270)
 
         // FavorabilityDailyLimit=15
-        // FavorabilityHeroDailyLimit=5
+        // FavorabilityHeroDailyLimit=5 
         if (tables) {
             // GlobalParamString is a string-key table: interleaved field1 = key
             // name (string), field2 = row{1: key, 2: value} — GameTable (varint
